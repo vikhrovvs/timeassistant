@@ -6,6 +6,12 @@ from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.utils import executor
+import aiogram.utils.markdown as md
+from aiogram.types import ParseMode, CallbackQuery
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+
+from aiogram_calendar import simple_cal_callback, SimpleCalendar, dialog_cal_callback, DialogCalendar
+
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -21,7 +27,8 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 
 bot = Bot(token=os.environ['BOT_TOKEN'])
 # bot = Bot(token="")
-dp = Dispatcher(bot)
+storage = MemoryStorage()
+dp = Dispatcher(bot, storage=storage)
 
 
 @dp.message_handler(commands=["start"])
@@ -37,6 +44,7 @@ class Event(StatesGroup):
     period = State()
 
 
+
 @dp.message_handler(commands=["event"])
 async def event(message: types.Message):
     await Event.name.set()
@@ -50,25 +58,27 @@ async def process_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
     await Event.next()
-    await message.reply("Please, enter an event date")
+    await message.reply("Please, enter an event date", reply_markup=await SimpleCalendar().start_calendar())
 
 
-#todo: Incorrect date
+# simple calendar usage
+@dp.callback_query_handler(simple_cal_callback.filter(), state=Event.date)
+async def process_simple_calendar(callback_query: CallbackQuery, callback_data: dict, state: FSMContext):
+    selected, date = await SimpleCalendar().process_selection(callback_query, callback_data)
+    if selected:
+        await Event.next()
+        await state.update_data(date=date)
+        # await callback_query.message.answer(
+        #     f'You selected {date.strftime("%d/%m/%Y")}'
+        # )
 
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        markup.add("Every day", "Every week", "Every 10s")
+        markup.add("Once")
 
-@dp.message_handler(state=Event.date)
-async def process_date(message: types.Message, state:FSMContext):
-    await Event.next()
-    await state.update_data(date=message.text)
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    markup.add("Every day", "Every week", "Every 10s")
-    markup.add("Once")
-
-    await message.reply("How often do you need a reminder of this event?", reply_markup=markup)
-
-
-#todo: Incorrect period
+        await callback_query.message.reply(
+            "How often do you need a reminder of this event?", reply_markup=markup
+        )
 
 
 @dp.message_handler(state=Event.period)
@@ -77,8 +87,19 @@ async def process_period(message: types.message, state: FSMContext):
         data['period'] = message.text
 
         markup = types.ReplyKeyboardRemove()
-        pass
+        await bot.send_message(
+            message.chat.id,
+            md.text(
+                md.text("Event description: ", md.bold(data['name'])),
+                md.text("Date: ", md.code(data['date'])),
+                md.text("Period: ", data['period']),
+                sep='\n',
+            ),
+            reply_markup=markup,
+            parse_mode=ParseMode.MARKDOWN,
+        )
 
+    await state.finish()
 
 
 async def send_date_to_admin(bot, admin_id=344762653, additional_text=""):
@@ -98,12 +119,13 @@ async def main():
 
     try:
         scheduler.start()
-        scheduler.add_job(send_date_to_admin, "interval", seconds=10, args=(bot,), start_date=datetime.now())
+        # scheduler.add_job(send_date_to_admin, "interval", seconds=10, args=(bot,), start_date=datetime.now())
 
         await dp.start_polling()
     finally:
         await dp.storage.close()
         await dp.storage.wait_closed()
+
 
 if __name__ == "__main__":
     try:
