@@ -1,6 +1,7 @@
 import os
 import time
 from datetime import datetime
+from dataclasses import dataclass
 
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
@@ -14,12 +15,10 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram_calendar import simple_cal_callback, SimpleCalendar, dialog_cal_callback, DialogCalendar
 from aiogram_timepicker.panel import FullTimePicker, full_timep_callback
 
-
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 import asyncio
 import logging
-
 
 from database_operations import create_necessary_tables_if_not_exist
 
@@ -31,6 +30,8 @@ bot = Bot(token=os.environ['BOT_TOKEN'])
 # bot = Bot(token="")
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
+
+scheduler = AsyncIOScheduler()
 
 
 @dp.message_handler(commands=["start"])
@@ -47,10 +48,19 @@ class Event(StatesGroup):
     period = State()
 
 
+@dataclass
+class UserEvent:
+    event_id: int
+    user_id: int
+    name: str
+    date: datetime
+    period: str
+
+
 @dp.message_handler(commands=["event"])
 async def event(message: types.Message):
     await Event.name.set()
-    await message.reply("Hi! Please, enter your event description")
+    await message.answer("Hi! Please, enter your event description")
 
 
 @dp.message_handler(state='*', commands='cancel')
@@ -73,7 +83,7 @@ async def process_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
     await Event.next()
-    await message.reply("Please, enter an event date", reply_markup=await SimpleCalendar().start_calendar())
+    await message.answer("Please, enter an event date", reply_markup=await SimpleCalendar().start_calendar())
 
 
 @dp.callback_query_handler(simple_cal_callback.filter(), state=Event.date)
@@ -100,6 +110,9 @@ async def process_name(callback_query: CallbackQuery, callback_data: dict, state
         await callback_query.message.answer(
             f'You selected {selected_time.strftime("%H:%M:%S")}'
         )
+        # await callback_query.message.answer(
+        #     f"debug: {state.proxy().keys()}"
+        # )
         await callback_query.message.delete_reply_markup()
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
@@ -117,6 +130,14 @@ async def process_period(message: types.message, state: FSMContext):
         data['period'] = message.text
 
         markup = types.ReplyKeyboardRemove()
+
+        user_event = UserEvent(event_id=-1,
+                               user_id=message.chat.id,
+                               name=data['name'],
+                               date=datetime.combine(data['date'], data['time']),
+                               period=data['period']
+                               )
+
         await bot.send_message(
             message.chat.id,
             md.text(
@@ -124,27 +145,33 @@ async def process_period(message: types.message, state: FSMContext):
                 md.text("Date: ", md.code(data['date'])),
                 md.text("Time: ", md.code(data['time'])),
                 md.text("Period: ", data['period']),
+                md.text("Combined: ",  user_event.date),
                 sep='\n',
             ),
             reply_markup=markup,
             parse_mode=ParseMode.MARKDOWN,
         )
 
+    scheduler.add_job(send_event_to_user, "interval", seconds=10, args=(user_event,), start_date=user_event.date)
     await state.finish()
 
 
-async def send_date_to_admin(bot, admin_id=344762653, additional_text=""):
-    text = f"Current time: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
+async def send_date_to_admin(admin_id=344762653, additional_text=""):
+    text = f"{additional_text}Current time: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
     await bot.send_message(chat_id=admin_id, text=text)
+
+
+async def send_event_to_user(user_event: UserEvent):
+    # TODO: check BD if cancelled
+    await bot.send_message(chat_id=user_event.user_id, text=user_event.name)
 
 
 async def main():
     # executor.start_polling(dp, timeout=10)
     create_necessary_tables_if_not_exist()
 
-    await send_date_to_admin(bot, additional_text="Starting bot!\n")
+    await send_date_to_admin(additional_text="Starting bot!\n")
     #
-    scheduler = AsyncIOScheduler()
     # scheduler.start()
     # scheduler.add_job(send_date_to_admin, "interval", seconds=10, args=(bot,))
 
