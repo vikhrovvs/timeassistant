@@ -127,8 +127,8 @@ async def process_name(message: types.Message, state: FSMContext):
     )
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    markup.add("Every day", "Every week", "Every 10s")
-    markup.add("Once")
+    markup.add("Every day", "Every week")
+    markup.add("Every hour", "Every 10s")
 
     await message.reply(
         "How often do you need a reminder of this event?", reply_markup=markup
