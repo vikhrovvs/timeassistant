@@ -96,8 +96,43 @@ async def process_simple_calendar(callback_query: CallbackQuery, callback_data: 
             f'You selected {date.strftime("%d/%m/%Y")}'
         )
 
-        await callback_query.message.answer("What is the time of your event?",
-                                            reply_markup=await FullTimePicker().start_picker())
+        message = await callback_query.message.answer("What is the time of your event?\n"
+                                                      "Please select or write space separated",
+                                                      reply_markup=await FullTimePicker().start_picker())
+        await state.update_data(temp_message=message)
+
+
+@dp.message_handler(state=Event.time)
+async def process_name(message: types.Message, state: FSMContext):
+    selected_time = None
+    for fmt in ("%H %M %S", "%H %M", "%H:%M:%S", "%H:%M", "%H.%M.%S", "%H.%M", "%H,%M,%S", "%H,%M"):
+        try:
+            selected_time = datetime.strptime(message.text, fmt).time()
+            break
+        except ValueError:
+            pass
+
+    if not selected_time:
+        await message.answer('Incorrect time format! Please, try again')
+        return
+
+    async with state.proxy() as data:
+        data['time'] = selected_time
+        await data['temp_message'].delete_reply_markup()
+        del data['temp_message']
+    await Event.next()
+
+    await message.answer(
+        f'You selected {selected_time.strftime("%H:%M:%S")}'
+    )
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+    markup.add("Every day", "Every week", "Every 10s")
+    markup.add("Once")
+
+    await message.reply(
+        "How often do you need a reminder of this event?", reply_markup=markup
+    )
 
 
 @dp.callback_query_handler(full_timep_callback.filter(), state=Event.time)
@@ -116,8 +151,8 @@ async def process_name(callback_query: CallbackQuery, callback_data: dict, state
         await callback_query.message.delete_reply_markup()
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-        markup.add("Every day", "Every week", "Every 10s")
-        markup.add("Once")
+        markup.add("Every day", "Every week")
+        markup.add("Every hour", "Every 10s")
 
         await callback_query.message.reply(
             "How often do you need a reminder of this event?", reply_markup=markup
@@ -141,18 +176,30 @@ async def process_period(message: types.message, state: FSMContext):
         await bot.send_message(
             message.chat.id,
             md.text(
+                md.text("Event created!"),
                 md.text("Event description: ", md.bold(data['name'])),
-                md.text("Date: ", md.code(data['date'])),
-                md.text("Time: ", md.code(data['time'])),
+                md.text("Date&time: ", user_event.date),
+                # md.text("Date: ", md.code(data['date'])),
+                # md.text("Time: ", md.code(data['time'])),
                 md.text("Period: ", data['period']),
-                md.text("Combined: ",  user_event.date),
                 sep='\n',
             ),
             reply_markup=markup,
             parse_mode=ParseMode.MARKDOWN,
         )
 
-    scheduler.add_job(send_event_to_user, "interval", seconds=10, args=(user_event,), start_date=user_event.date)
+    if user_event.period == "Every week":
+        interval = {"weeks": 1}
+    elif user_event.period == "Every day":
+        interval = {"days": 1}
+    elif user_event.period == "Every hour":
+        interval = {"hours": 1}
+    elif user_event.period == "Every 10s":
+        interval = {"seconds": 10}
+    else:
+        interval = {"days": 1}
+
+    scheduler.add_job(send_event_to_user, "interval", args=(user_event,), start_date=user_event.date, **interval)
     await state.finish()
 
 
