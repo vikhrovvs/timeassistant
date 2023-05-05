@@ -40,8 +40,8 @@ scheduler = AsyncIOScheduler()
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     response = "Hi!\nI'm time assistant!\nUse /event to create an event.\n" \
-               "Use /cancel to stop event creation at any time" \
-               "The bot is not stable yet and all the event cancel each restart" \
+               "Use /cancel to stop event creation at any time\n\n" \
+               "The bot is not stable yet and all the events cancel each time the bot restarts" \
                "\n(that happens quite often)"
     await message.answer(response)
 
