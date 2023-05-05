@@ -40,6 +40,7 @@ scheduler = AsyncIOScheduler()
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     response = "Hi!\nI'm time assistant!\nUse /event to create an event.\n" \
+               "Use /cancel to stop event creation at any time" \
                "The bot is not stable yet and all the event cancel each restart" \
                "\n(that happens quite often)"
     await message.answer(response)
@@ -101,13 +102,14 @@ async def process_simple_calendar(callback_query: CallbackQuery, callback_data: 
         )
 
         message = await callback_query.message.answer("What is the time of your event?\n"
-                                                      "Please select or write space separated",
-                                                      reply_markup=await FullTimePicker().start_picker())
+                                                      "Please, write seperated as HH MM or HH MM SS")
+                                                      # "Please select or write space separated",
+                                                      # reply_markup=await FullTimePicker().start_picker())
         await state.update_data(temp_message=message)
 
 
 @dp.message_handler(state=Event.time)
-async def process_name(message: types.Message, state: FSMContext):
+async def process_time(message: types.Message, state: FSMContext):
     selected_time = None
     for fmt in ("%H %M %S", "%H %M", "%H:%M:%S", "%H:%M", "%H.%M.%S", "%H.%M", "%H,%M,%S", "%H,%M"):
         try:
@@ -130,15 +132,23 @@ async def process_name(message: types.Message, state: FSMContext):
         f'You selected {selected_time.strftime("%H:%M:%S")}'
     )
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    markup.add("Every day", "Every week")
-    markup.add("Every hour", "Every 10s")
+    # markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+    # markup.add("Every day", "Every week")
+    # markup.add("Every hour", "Every 10s")
+    markup = types.InlineKeyboardMarkup()
+    button_1w = types.InlineKeyboardButton('Every week', callback_data='select_period|' + 'Every week')
+    button_1d = types.InlineKeyboardButton('Every day', callback_data='select_period|' + 'Every day')
+    button_1h = types.InlineKeyboardButton('Every hour', callback_data='select_period|' + 'Every hour')
+    button_10s = types.InlineKeyboardButton('Every 10s', callback_data='select_period|' + 'Every 10s')
+    markup.row(button_1w, button_1d)
+    markup.row(button_1h, button_10s)
 
-    await message.reply(
+    await message.answer(
         "How often do you need a reminder of this event?", reply_markup=markup
     )
 
 
+'''
 @dp.callback_query_handler(full_timep_callback.filter(), state=Event.time)
 async def process_name(callback_query: CallbackQuery, callback_data: dict, state: FSMContext):
     r = await FullTimePicker().process_selection(callback_query, callback_data)
@@ -168,6 +178,7 @@ async def process_name(callback_query: CallbackQuery, callback_data: dict, state
         await callback_query.message.answer(
             "How often do you need a reminder of this event?", reply_markup=markup
         )
+'''
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith('select_period'), state=Event.period)
