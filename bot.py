@@ -17,6 +17,7 @@ from aiogram_calendar import simple_cal_callback, SimpleCalendar, dialog_cal_cal
 from aiogram_timepicker.panel import FullTimePicker, full_timep_callback
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from zoneinfo import ZoneInfo
 
 import asyncio
 import logging
@@ -190,10 +191,11 @@ async def process_period(callback_query: types.CallbackQuery, state: FSMContext)
     cmd, period = callback_query.data.split('|')
     async with state.proxy() as data:
         data['period'] = period
+        start_date = datetime.combine(data['date'], data['time'], tzinfo=ZoneInfo("Europe/Moscow"))
         user_event = UserEvent(event_id=str(uuid.uuid4()),
                                user_id=callback_query.from_user.id,
                                name=data['name'],
-                               date=datetime.combine(data['date'], data['time']),
+                               date=start_date,
                                period=data['period']
                                )
         if user_event.period == "Every week":
