@@ -1,6 +1,7 @@
 import os
+import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from dataclasses import dataclass
 
 import apscheduler.jobstores.base
@@ -24,9 +25,13 @@ import logging
 
 import uuid
 
-from database_operations import create_necessary_tables_if_not_exist
+from database_operations import create_necessary_tables_if_not_exist, save_event, set_inactive, load_all_events
 
 log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+stdout_handler = logging.StreamHandler(stream=sys.stdout)
+stdout_handler.setLevel(logging.INFO)
+log.addHandler(stdout_handler)
 
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
@@ -42,8 +47,7 @@ scheduler = AsyncIOScheduler()
 async def start(message: types.Message):
     response = "Hi!\nI'm time assistant!\nUse /event to create an event.\n" \
                "Use /cancel to stop event creation at any time\n\n" \
-               "The bot is not stable yet and all the events cancel each time the bot restarts" \
-               "\n(that happens quite often)"
+               "The only available timezone yet is UTC+3 (Europe/Moscow)"
     await message.answer(response)
 
 
@@ -198,20 +202,9 @@ async def process_period(callback_query: types.CallbackQuery, state: FSMContext)
                                date=start_date,
                                period=data['period']
                                )
-        if user_event.period == "Every week":
-            interval = {"weeks": 1}
-        elif user_event.period == "Every day":
-            interval = {"days": 1}
-        elif user_event.period == "Every hour":
-            interval = {"hours": 1}
-        elif user_event.period == "Every 10s":
-            interval = {"seconds": 10}
-        else:
-            interval = {"days": 1}
 
-        scheduler.add_job(send_event_to_user, "interval", args=(user_event,),
-                          start_date=user_event.date, id=user_event.event_id,
-                          **interval)
+        save_event(user_event)
+        await initialize_event(user_event)
 
         markup = types.InlineKeyboardMarkup()
         button = types.InlineKeyboardButton('Cancel event', callback_data='cancel_job|' + user_event.event_id)
@@ -235,20 +228,44 @@ async def process_period(callback_query: types.CallbackQuery, state: FSMContext)
     await state.finish()
 
 
+async def initialize_event(user_event: UserEvent):
+    if user_event.period == "Every week":
+        interval = {"weeks": 1}
+    elif user_event.period == "Every day":
+        interval = {"days": 1}
+    elif user_event.period == "Every hour":
+        interval = {"hours": 1}
+    elif user_event.period == "Every 10s":
+        interval = {"seconds": 10}
+    else:
+        interval = {"days": 1}
+
+    scheduler.add_job(send_event_to_user, "interval", args=(user_event,),
+                      start_date=user_event.date, id=user_event.event_id,
+                      **interval)
+
+
+async def cancel_event(event_id: str) -> str:
+    try:
+        scheduler.remove_job(event_id)
+        set_inactive(event_id)
+        message_text = 'Event cancelled successfully'
+    except apscheduler.jobstores.base.JobLookupError:
+        message_text = 'Oops! Event is already inactive'
+    return message_text
+
+
 @dp.callback_query_handler(lambda c: c.data.startswith('cancel_job'))
 async def process_job_cancel(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await callback_query.message.delete_reply_markup()
-    cmd, job_id = callback_query.data.split('|')
-    try:
-        scheduler.remove_job(job_id)
-        message_text = 'Event cancelled successfully'
-    except apscheduler.jobstores.base.JobLookupError:
-        message_text = 'Oops! Event is already inactive'
+    cmd, event_id = callback_query.data.split('|')
+    message_text = await cancel_event(event_id)
     await bot.send_message(chat_id=callback_query.from_user.id, text=message_text)
 
 
 async def send_date_to_admin(admin_id=344762653, additional_text=""):
+    log.info(f"sending date to admin at {datetime.now()}")
     text = f"{additional_text}Current time: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
     await bot.send_message(chat_id=admin_id, text=text)
 
@@ -260,18 +277,22 @@ async def send_event_to_user(user_event: UserEvent):
     await bot.send_message(chat_id=user_event.user_id, text=user_event.name, reply_markup=markup)
 
 
-async def main():
-    # executor.start_polling(dp, timeout=10)
-    create_necessary_tables_if_not_exist()
+async def respawn_all_events():
+    events = load_all_events()
+    for event in events:
+        await initialize_event(event)
 
+
+async def main():
+    log.info(f"Starting bot; it is now {datetime.now()}")
+    create_necessary_tables_if_not_exist()
     await send_date_to_admin(additional_text="Starting bot!\n")
-    #
-    # scheduler.start()
-    # scheduler.add_job(send_date_to_admin, "interval", seconds=10, args=(bot,))
 
     try:
         scheduler.start()
-        # scheduler.add_job(send_date_to_admin, "interval", seconds=10, args=(bot,), start_date=datetime.now())
+        # scheduler.add_job(send_date_to_admin, "interval", minutes=10, args=(344762653, "started 10m ago"),
+        #                   start_date=datetime.now() - timedelta(minutes=5))
+        await respawn_all_events()
 
         await dp.start_polling()
     finally:

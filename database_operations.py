@@ -1,26 +1,68 @@
+import logging
 import sqlite3
+import sys
+from dataclasses import dataclass
 from datetime import timedelta, datetime
+
+
+@dataclass
+class UserEvent:
+    event_id: str
+    user_id: int
+    name: str
+    date: datetime
+    period: str
+
+
+log = logging.getLogger(__name__)
+log.setLevel(logging.INFO)
+stdout_handler = logging.StreamHandler(stream=sys.stdout)
+stdout_handler.setLevel(logging.INFO)
+log.addHandler(stdout_handler)
 
 
 def create_necessary_tables_if_not_exist():
     with sqlite3.connect("bot_db.db") as connection:
-        pass
-        # sql = "CREATE TABLE IF NOT EXISTS events (user_id INT, )"
-        # cursor = connection.cursor()
-        # cursor.execute(sql)
-        # connection.commit()
-
-        # sql = "CREATE TABLE IF NOT EXISTS requests (user_id INT, request TEXT)"
-        # cursor = connection.cursor()
-        # cursor.execute(sql)
-        # connection.commit()
-        #
-        # sql = "CREATE TABLE IF NOT EXISTS shows (user_id INT, movie TEXT)"
-        # cursor = connection.cursor()
-        # cursor.execute(sql)
-        # connection.commit()
-        # cursor.close()
+        sql = "CREATE TABLE IF NOT EXISTS events (event_id str primary key, user_id INT, name str, date str, period str, is_active int)"
+        cursor = connection.cursor()
+        cursor.execute(sql)
+        connection.commit()
+        cursor.close()
 
 
-def save_event(user_id: int, event_description: str, start_time: datetime, period: timedelta):
-    pass
+def save_event(user_event: UserEvent):
+    with sqlite3.connect("bot_db.db") as connection:
+        sql = "INSERT INTO events (event_id, user_id, name, date, period, is_active) VALUES (?, ?, ?, ?, ?, ?)"
+        cursor = connection.cursor()
+        cursor.execute(sql, (user_event.event_id, user_event.user_id, user_event.name,
+                             user_event.date.strftime("%d/%m/%Y %H:%M:%S"), user_event.period, 1))
+        connection.commit()
+        cursor.close()
+
+
+def set_inactive(event_id: str):
+    with sqlite3.connect("bot_db.db") as connection:
+        cursor = connection.cursor()
+        sql = "UPDATE events SET is_active = 0 WHERE event_id = ?"
+        cursor.execute(sql, (event_id,))
+        connection.commit()
+        cursor.close()
+
+
+def load_all_events() -> list[UserEvent]:
+    events = []
+    with sqlite3.connect("bot_db.db") as connection:
+        cursor = connection.cursor()
+        sql = "SELECT * FROM events WHERE is_active = 1"
+        cursor.execute(sql)
+        rows = cursor.fetchall()
+        cursor.close()
+    for row in rows:
+        event_id, user_id, name, date_str, period, is_active = row
+        date = datetime.strptime(date_str, "%d/%m/%Y %H:%M:%S")
+        event = UserEvent(event_id, user_id, name, date, period)
+        events.append(event)
+        log.info(event)
+    return events
+
+
