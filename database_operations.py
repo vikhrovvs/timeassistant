@@ -1,8 +1,11 @@
-import logging
 import sqlite3
-import sys
 from dataclasses import dataclass
-from datetime import timedelta, datetime
+from datetime import datetime
+
+from user_event import UserEvent
+from utils import get_logger
+
+log = get_logger()
 
 
 @dataclass
@@ -12,13 +15,6 @@ class UserEvent:
     name: str
     date: datetime
     period: str
-
-
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-stdout_handler = logging.StreamHandler(stream=sys.stdout)
-stdout_handler.setLevel(logging.INFO)
-log.addHandler(stdout_handler)
 
 
 def create_necessary_tables_if_not_exist():

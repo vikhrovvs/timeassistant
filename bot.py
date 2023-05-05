@@ -1,42 +1,29 @@
+import asyncio
 import os
-import sys
-import time
-from datetime import datetime, timedelta
-from dataclasses import dataclass
+import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
+import aiogram.utils.markdown as md
 import apscheduler.jobstores.base
 from aiogram import Bot, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import Text
-from aiogram.utils import executor
-import aiogram.utils.markdown as md
+from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.types import ParseMode, CallbackQuery
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-
-from aiogram_calendar import simple_cal_callback, SimpleCalendar, dialog_cal_callback, DialogCalendar
-from aiogram_timepicker.panel import FullTimePicker, full_timep_callback
-
+from aiogram_calendar import simple_cal_callback, SimpleCalendar
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from zoneinfo import ZoneInfo
-
-import asyncio
-import logging
-
-import uuid
 
 from database_operations import create_necessary_tables_if_not_exist, save_event, set_inactive, load_all_events
+from user_event import UserEvent
+from utils import get_logger
 
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-stdout_handler = logging.StreamHandler(stream=sys.stdout)
-stdout_handler.setLevel(logging.INFO)
-log.addHandler(stdout_handler)
 
-from aiogram.dispatcher.filters.state import State, StatesGroup
+log = get_logger()
 
 bot = Bot(token=os.environ['BOT_TOKEN'])
-# bot = Bot(token="")
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
@@ -56,15 +43,6 @@ class Event(StatesGroup):
     date = State()
     time = State()
     period = State()
-
-
-@dataclass
-class UserEvent:
-    event_id: str
-    user_id: int
-    name: str
-    date: datetime
-    period: str
 
 
 @dp.message_handler(commands=["event"])
@@ -108,8 +86,6 @@ async def process_simple_calendar(callback_query: CallbackQuery, callback_data: 
 
         message = await callback_query.message.answer("What is the time of your event?\n"
                                                       "Please, write seperated as HH MM or HH MM SS")
-                                                      # "Please select or write space separated",
-                                                      # reply_markup=await FullTimePicker().start_picker())
         await state.update_data(temp_message=message)
 
 
@@ -129,7 +105,6 @@ async def process_time(message: types.Message, state: FSMContext):
 
     async with state.proxy() as data:
         data['time'] = selected_time
-        # await data['temp_message'].delete_reply_markup()
         del data['temp_message']
     await Event.next()
 
@@ -137,9 +112,6 @@ async def process_time(message: types.Message, state: FSMContext):
         f'You selected {selected_time.strftime("%H:%M:%S")}'
     )
 
-    # markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-    # markup.add("Every day", "Every week")
-    # markup.add("Every hour", "Every 10s")
     markup = types.InlineKeyboardMarkup()
     button_1w = types.InlineKeyboardButton('Every week', callback_data='select_period|' + 'Every week')
     button_1d = types.InlineKeyboardButton('Every day', callback_data='select_period|' + 'Every day')
@@ -151,39 +123,6 @@ async def process_time(message: types.Message, state: FSMContext):
     await message.answer(
         "How often do you need a reminder of this event?", reply_markup=markup
     )
-
-
-'''
-@dp.callback_query_handler(full_timep_callback.filter(), state=Event.time)
-async def process_name(callback_query: CallbackQuery, callback_data: dict, state: FSMContext):
-    r = await FullTimePicker().process_selection(callback_query, callback_data)
-    selected, selected_time = r.selected, r.time
-    if selected:
-        await Event.next()
-        await state.update_data(time=selected_time)
-        await callback_query.message.answer(
-            f'You selected {selected_time.strftime("%H:%M:%S")}'
-        )
-        # await callback_query.message.answer(
-        #     f"debug: {state.proxy().keys()}"
-        # )
-        await callback_query.message.delete_reply_markup()
-
-        # markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-        # markup.add("Every day", "Every week")
-        # markup.add("Every hour", "Every 10s")
-        markup = types.InlineKeyboardMarkup()
-        button_1w = types.InlineKeyboardButton('Every week', callback_data='select_period|' + 'Every week')
-        button_1d = types.InlineKeyboardButton('Every day', callback_data='select_period|' + 'Every day')
-        button_1h = types.InlineKeyboardButton('Every hour', callback_data='select_period|' + 'Every hour')
-        button_10s = types.InlineKeyboardButton('Every 10s', callback_data='select_period|' + 'Every 10s')
-        markup.row(button_1w, button_1d)
-        markup.row(button_1h, button_10s)
-
-        await callback_query.message.answer(
-            "How often do you need a reminder of this event?", reply_markup=markup
-        )
-'''
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith('select_period'), state=Event.period)
