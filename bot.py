@@ -65,7 +65,7 @@ class UserEvent:
 @dp.message_handler(commands=["event"])
 async def event(message: types.Message):
     await Event.name.set()
-    await message.answer("Hi! Please, enter your event description")
+    await message.answer("Please, enter your event description")
 
 
 @dp.message_handler(state='*', commands='cancel')
@@ -124,7 +124,7 @@ async def process_time(message: types.Message, state: FSMContext):
 
     async with state.proxy() as data:
         data['time'] = selected_time
-        await data['temp_message'].delete_reply_markup()
+        # await data['temp_message'].delete_reply_markup()
         del data['temp_message']
     await Event.next()
 
