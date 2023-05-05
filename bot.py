@@ -3,6 +3,7 @@ import time
 from datetime import datetime
 from dataclasses import dataclass
 
+import apscheduler.jobstores.base
 from aiogram import Bot, types
 from aiogram.dispatcher import Dispatcher
 from aiogram.dispatcher import FSMContext
@@ -20,6 +21,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import asyncio
 import logging
 
+import uuid
+
 from database_operations import create_necessary_tables_if_not_exist
 
 log = logging.getLogger(__name__)
@@ -36,8 +39,9 @@ scheduler = AsyncIOScheduler()
 
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
-    # response = "Hi!\nI'm time assistant!\nUse /help to see my commands!"
-    response = f"Hi! Your id: {message.from_user.id}"
+    response = "Hi!\nI'm time assistant!\nUse /event to create an event.\n" \
+               "The bot is not stable yet and all the event cancel each restart" \
+               "\n(that happens quite often)"
     await message.answer(response)
 
 
@@ -50,7 +54,7 @@ class Event(StatesGroup):
 
 @dataclass
 class UserEvent:
-    event_id: int
+    event_id: str
     user_id: int
     name: str
     date: datetime
@@ -150,31 +154,58 @@ async def process_name(callback_query: CallbackQuery, callback_data: dict, state
         # )
         await callback_query.message.delete_reply_markup()
 
-        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
-        markup.add("Every day", "Every week")
-        markup.add("Every hour", "Every 10s")
+        # markup = types.ReplyKeyboardMarkup(resize_keyboard=True, selective=True)
+        # markup.add("Every day", "Every week")
+        # markup.add("Every hour", "Every 10s")
+        markup = types.InlineKeyboardMarkup()
+        button_1w = types.InlineKeyboardButton('Every week', callback_data='select_period|' + 'Every week')
+        button_1d = types.InlineKeyboardButton('Every day', callback_data='select_period|' + 'Every day')
+        button_1h = types.InlineKeyboardButton('Every hour', callback_data='select_period|' + 'Every hour')
+        button_10s = types.InlineKeyboardButton('Every 10s', callback_data='select_period|' + 'Every 10s')
+        markup.row(button_1w, button_1d)
+        markup.row(button_1h, button_10s)
 
-        await callback_query.message.reply(
+        await callback_query.message.answer(
             "How often do you need a reminder of this event?", reply_markup=markup
         )
 
 
-@dp.message_handler(state=Event.period)
-async def process_period(message: types.message, state: FSMContext):
+@dp.callback_query_handler(lambda c: c.data.startswith('select_period'), state=Event.period)
+# @dp.message_handler(state=Event.period)
+# async def process_period(message: types.message, state: FSMContext):
+async def process_period(callback_query: types.CallbackQuery, state: FSMContext):
+    await bot.answer_callback_query(callback_query.id)
+    await callback_query.message.delete_reply_markup()
+    cmd, period = callback_query.data.split('|')
     async with state.proxy() as data:
-        data['period'] = message.text
-
-        markup = types.ReplyKeyboardRemove()
-
-        user_event = UserEvent(event_id=-1,
-                               user_id=message.chat.id,
+        data['period'] = period
+        user_event = UserEvent(event_id=str(uuid.uuid4()),
+                               user_id=callback_query.from_user.id,
                                name=data['name'],
                                date=datetime.combine(data['date'], data['time']),
                                period=data['period']
                                )
+        if user_event.period == "Every week":
+            interval = {"weeks": 1}
+        elif user_event.period == "Every day":
+            interval = {"days": 1}
+        elif user_event.period == "Every hour":
+            interval = {"hours": 1}
+        elif user_event.period == "Every 10s":
+            interval = {"seconds": 10}
+        else:
+            interval = {"days": 1}
+
+        scheduler.add_job(send_event_to_user, "interval", args=(user_event,),
+                          start_date=user_event.date, id=user_event.event_id,
+                          **interval)
+
+        markup = types.InlineKeyboardMarkup()
+        button = types.InlineKeyboardButton('Cancel event', callback_data='cancel_job|' + user_event.event_id)
+        markup.add(button)
 
         await bot.send_message(
-            message.chat.id,
+            callback_query.from_user.id,
             md.text(
                 md.text("Event created!"),
                 md.text("Event description: ", md.bold(data['name'])),
@@ -188,19 +219,20 @@ async def process_period(message: types.message, state: FSMContext):
             parse_mode=ParseMode.MARKDOWN,
         )
 
-    if user_event.period == "Every week":
-        interval = {"weeks": 1}
-    elif user_event.period == "Every day":
-        interval = {"days": 1}
-    elif user_event.period == "Every hour":
-        interval = {"hours": 1}
-    elif user_event.period == "Every 10s":
-        interval = {"seconds": 10}
-    else:
-        interval = {"days": 1}
-
-    scheduler.add_job(send_event_to_user, "interval", args=(user_event,), start_date=user_event.date, **interval)
     await state.finish()
+
+
+@dp.callback_query_handler(lambda c: c.data.startswith('cancel_job'))
+async def process_job_cancel(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await callback_query.message.delete_reply_markup()
+    cmd, job_id = callback_query.data.split('|')
+    try:
+        scheduler.remove_job(job_id)
+        message_text = 'Event cancelled successfully'
+    except apscheduler.jobstores.base.JobLookupError:
+        message_text = 'Oops! Event is already inactive'
+    await bot.send_message(chat_id=callback_query.from_user.id, text=message_text)
 
 
 async def send_date_to_admin(admin_id=344762653, additional_text=""):
@@ -209,8 +241,10 @@ async def send_date_to_admin(admin_id=344762653, additional_text=""):
 
 
 async def send_event_to_user(user_event: UserEvent):
-    # TODO: check BD if cancelled
-    await bot.send_message(chat_id=user_event.user_id, text=user_event.name)
+    markup = types.InlineKeyboardMarkup()
+    button = types.InlineKeyboardButton('Cancel event', callback_data='cancel_job|' + user_event.event_id)
+    markup.add(button)
+    await bot.send_message(chat_id=user_event.user_id, text=user_event.name, reply_markup=markup)
 
 
 async def main():
