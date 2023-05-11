@@ -68,12 +68,9 @@ def load_event(event_id: str) -> Optional[UserEvent]:
         cursor.execute(sql, (event_id, ))
         rows = cursor.fetchall()
         cursor.close()
-    log.info(f"Loaded {len(rows)} rows")
     if len(rows) == 0:
-        log.error("No event found")
         return None
     row = rows[0]
-    log.info(row)
     event = create_event_from_row(row)
     return event
 
@@ -87,7 +84,6 @@ def try_set_active(event_id: str):
         cursor.close()
 
         is_active = rows[0][0]
-        log.info(is_active)
         if is_active == 1:
             return False
         else:
