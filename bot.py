@@ -196,11 +196,16 @@ async def cancel_event(event_id: str) -> str:
 
 @dp.callback_query_handler(lambda c: c.data.startswith('cancel_job'))
 async def process_job_cancel(callback_query: types.CallbackQuery):
-    await bot.answer_callback_query(callback_query.id)
-    await callback_query.message.delete_reply_markup()
+    # await callback_query.message.delete_reply_markup()
     cmd, event_id = callback_query.data.split('|')
     message_text = await cancel_event(event_id)
-    await callback_query.answer(text=message_text)
+    markup = types.InlineKeyboardMarkup()
+    button = types.InlineKeyboardButton('Resume event (not implemented yet)', callback_data='resume_job|' + event_id)
+    markup.add(button)
+    await callback_query.message.edit_reply_markup(markup)
+    await bot.answer_callback_query(callback_query.id, text=message_text)
+
+    # await callback_query.answer(text=message_text)
     # await bot.send_message(chat_id=callback_query.from_user.id, text=message_text)
 
 
