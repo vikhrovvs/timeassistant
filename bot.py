@@ -33,8 +33,9 @@ scheduler = AsyncIOScheduler()
 async def start(message: types.Message):
     response = "Hi!\nI'm time assistant!\nUse /event to create an event.\n" \
                "Use /cancel to stop event creation at any time\n\n" \
-               "The only available timezone yet is UTC+3 (Europe/Moscow)\n" \
-               "Tip: include all data to you"
+               "The only available timezone yet is UTC+3 (Europe/Moscow)\n\n" \
+               "Tip: include all extra data to your event description\n" \
+               "(e. g. zoom link for a lecture)"
     await message.answer(response)
 
 
@@ -121,7 +122,7 @@ async def process_time(message: types.Message, state: FSMContext):
     markup.row(button_1h, button_10s)
 
     await message.answer(
-        "How often do you need a reminder of this event?", reply_markup=markup
+        "How often does this event occur?", reply_markup=markup
     )
 
 
