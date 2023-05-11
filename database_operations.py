@@ -88,7 +88,7 @@ def try_set_active(event_id: str):
 
         is_active = rows[0][0]
         log.info(is_active)
-        if is_active == 0:
+        if is_active == 1:
             return False
         else:
             cursor = connection.cursor()
