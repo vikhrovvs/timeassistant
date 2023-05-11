@@ -87,6 +87,7 @@ def try_set_active(event_id: str):
         cursor.close()
 
         is_active = rows[0]
+        log.info(is_active)
         if is_active == 0:
             log.info("event is already active")
             return False
