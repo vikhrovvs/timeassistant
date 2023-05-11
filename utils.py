@@ -1,5 +1,8 @@
 import logging
+from zoneinfo import ZoneInfo
 
+
+DEFAULT_TZ = ZoneInfo("Europe/Moscow")
 
 def get_logger():
     log = logging.getLogger(__name__)

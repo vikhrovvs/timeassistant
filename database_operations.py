@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from user_event import UserEvent
-from utils import get_logger
+from utils import get_logger, DEFAULT_TZ
 
 log = get_logger()
 
@@ -56,9 +56,8 @@ def load_all_events() -> list[UserEvent]:
     for row in rows:
         event_id, user_id, name, date_str, period, is_active = row
         date = datetime.strptime(date_str, "%d/%m/%Y %H:%M:%S")
+        date = date.replace(tzinfo=DEFAULT_TZ)
         event = UserEvent(event_id, user_id, name, date, period)
         events.append(event)
         log.info(event)
     return events
-
-

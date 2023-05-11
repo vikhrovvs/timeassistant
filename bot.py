@@ -18,7 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from database_operations import create_necessary_tables_if_not_exist, save_event, set_inactive, load_all_events
 from user_event import UserEvent
-from utils import get_logger
+from utils import get_logger, DEFAULT_TZ
 
 
 log = get_logger()
@@ -134,7 +134,7 @@ async def process_period(callback_query: types.CallbackQuery, state: FSMContext)
     cmd, period = callback_query.data.split('|')
     async with state.proxy() as data:
         data['period'] = period
-        start_date = datetime.combine(data['date'], data['time'], tzinfo=ZoneInfo("Europe/Moscow"))
+        start_date = datetime.combine(data['date'], data['time'], tzinfo=DEFAULT_TZ)
         user_event = UserEvent(event_id=str(uuid.uuid4()),
                                user_id=callback_query.from_user.id,
                                name=data['name'],
