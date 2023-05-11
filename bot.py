@@ -200,7 +200,8 @@ async def process_job_cancel(callback_query: types.CallbackQuery):
     await callback_query.message.delete_reply_markup()
     cmd, event_id = callback_query.data.split('|')
     message_text = await cancel_event(event_id)
-    await bot.send_message(chat_id=callback_query.from_user.id, text=message_text)
+    await callback_query.answer(text=message_text, show_alert=True)
+    # await bot.send_message(chat_id=callback_query.from_user.id, text=message_text)
 
 
 async def send_date_to_admin(admin_id=344762653, additional_text=""):
