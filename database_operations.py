@@ -1,8 +1,9 @@
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
-from user_event import UserEvent
+from user_event import UserEvent, create_event_from_row
 from utils import get_logger, DEFAULT_TZ
 
 log = get_logger()
@@ -54,10 +55,44 @@ def load_all_events() -> list[UserEvent]:
         rows = cursor.fetchall()
         cursor.close()
     for row in rows:
-        event_id, user_id, name, date_str, period, is_active = row
-        date = datetime.strptime(date_str, "%d/%m/%Y %H:%M:%S")
-        date = date.replace(tzinfo=DEFAULT_TZ)
-        event = UserEvent(event_id, user_id, name, date, period)
+        event = create_event_from_row(row)
         events.append(event)
         log.info(event)
     return events
+
+
+def load_event(event_id: str) -> Optional[UserEvent]:
+    with sqlite3.connect("bot_db.db") as connection:
+        cursor = connection.cursor()
+        sql = "SELECT * FROM events WHERE event_id = ? LIMIT 1"
+        cursor.execute(sql, (event_id, ))
+        rows = cursor.fetchall()
+        cursor.close()
+    log.info(f"Loaded {len(rows)} rows")
+    if len(rows) == 0:
+        log.error("No event found")
+        return None
+    row = rows[0]
+    log.info(row)
+    event = create_event_from_row(row)
+    return event
+
+
+def try_set_active(event_id: str):
+    with sqlite3.connect("bot_db.db") as connection:
+        cursor = connection.cursor()
+        sql = "SELECT is_active FROM events WHERE event_id = ? LIMIT 1"
+        cursor.execute(sql, (event_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+
+        is_active = rows[0]
+        if is_active == 0:
+            return False
+        else:
+            cursor = connection.cursor()
+            sql = "UPDATE events SET is_active = 1 WHERE event_id = ?"
+            cursor.execute(sql, (event_id,))
+            connection.commit()
+            cursor.close()
+            return True

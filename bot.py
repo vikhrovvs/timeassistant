@@ -2,7 +2,6 @@ import asyncio
 import os
 import uuid
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import aiogram.utils.markdown as md
 import apscheduler.jobstores.base
@@ -16,11 +15,11 @@ from aiogram.types import ParseMode, CallbackQuery
 from aiogram_calendar import simple_cal_callback, SimpleCalendar
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from database_operations import create_necessary_tables_if_not_exist, save_event, set_inactive, load_all_events
+from database_operations import *
 from user_event import UserEvent
 from utils import get_logger, DEFAULT_TZ
 
-
+admin_id = os.environ['ADMIN_ID']
 log = get_logger()
 
 bot = Bot(token=os.environ['BOT_TOKEN'])
@@ -34,7 +33,8 @@ scheduler = AsyncIOScheduler()
 async def start(message: types.Message):
     response = "Hi!\nI'm time assistant!\nUse /event to create an event.\n" \
                "Use /cancel to stop event creation at any time\n\n" \
-               "The only available timezone yet is UTC+3 (Europe/Moscow)"
+               "The only available timezone yet is UTC+3 (Europe/Moscow)\n" \
+               "Tip: include all data to you"
     await message.answer(response)
 
 
@@ -190,26 +190,40 @@ async def cancel_event(event_id: str) -> str:
         set_inactive(event_id)
         message_text = 'Event cancelled successfully'
     except apscheduler.jobstores.base.JobLookupError:
-        message_text = 'Oops! Event is already inactive'
+        message_text = 'Event is already inactive!'
     return message_text
 
 
 @dp.callback_query_handler(lambda c: c.data.startswith('cancel_job'))
 async def process_job_cancel(callback_query: types.CallbackQuery):
-    # await callback_query.message.delete_reply_markup()
     cmd, event_id = callback_query.data.split('|')
     message_text = await cancel_event(event_id)
     markup = types.InlineKeyboardMarkup()
-    button = types.InlineKeyboardButton('Resume event (not implemented yet)', callback_data='resume_job|' + event_id)
+    button = types.InlineKeyboardButton('Resume event', callback_data='resume_job|' + event_id)
     markup.add(button)
     await callback_query.message.edit_reply_markup(markup)
     await bot.answer_callback_query(callback_query.id, text=message_text)
 
-    # await callback_query.answer(text=message_text)
-    # await bot.send_message(chat_id=callback_query.from_user.id, text=message_text)
+
+@dp.callback_query_handler(lambda c: c.data.startswith('resume_job'))
+async def process_job_resume(callback_query: types.CallbackQuery):
+    cmd, event_id = callback_query.data.split('|')
+    event = load_event(event_id)
+    set_active = try_set_active(event_id)
+    if set_active:
+        await initialize_event(event)
+        markup = types.InlineKeyboardMarkup()
+        button = types.InlineKeyboardButton('Cancel event', callback_data='cancel_job|' + event_id)
+        markup.add(button)
+        await callback_query.message.edit_reply_markup(markup)
+        message_text = "Event resumed successfully"
+        await bot.answer_callback_query(callback_query.id, text=message_text)
+    else:
+        message_text = "Event is already running!"
+        await bot.answer_callback_query(callback_query.id, text=message_text)
 
 
-async def send_date_to_admin(admin_id=344762653, additional_text=""):
+async def send_date_to_admin(admin_id=admin_id, additional_text=""):
     log.info(f"sending date to admin at {datetime.now()}")
     text = f"{additional_text}Current time: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}"
     await bot.send_message(chat_id=admin_id, text=text)
