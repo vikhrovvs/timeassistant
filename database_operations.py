@@ -88,8 +88,10 @@ def try_set_active(event_id: str):
 
         is_active = rows[0]
         if is_active == 0:
+            log.info("event is already active")
             return False
         else:
+            log.info("event is inactive")
             cursor = connection.cursor()
             sql = "UPDATE events SET is_active = 1 WHERE event_id = ?"
             cursor.execute(sql, (event_id,))
