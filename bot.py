@@ -212,15 +212,16 @@ async def process_job_resume(callback_query: types.CallbackQuery):
     set_active = try_set_active(event_id)
     if set_active:
         await initialize_event(event)
-        markup = types.InlineKeyboardMarkup()
-        button = types.InlineKeyboardButton('Cancel event', callback_data='cancel_job|' + event_id)
-        markup.add(button)
-        await callback_query.message.edit_reply_markup(markup)
         message_text = "Event resumed successfully"
         await bot.answer_callback_query(callback_query.id, text=message_text)
     else:
         message_text = "Event is already running!"
         await bot.answer_callback_query(callback_query.id, text=message_text)
+
+    markup = types.InlineKeyboardMarkup()
+    button = types.InlineKeyboardButton('Cancel event', callback_data='cancel_job|' + event_id)
+    markup.add(button)
+    await callback_query.message.edit_reply_markup(markup)
 
 
 async def send_date_to_admin(admin_id=admin_id, additional_text=""):
