@@ -32,11 +32,20 @@ scheduler = AsyncIOScheduler()
 @dp.message_handler(commands=["start"])
 async def start(message: types.Message):
     response = "Hi!\nI'm time assistant!\nUse /event to create an event.\n" \
-               "Use /cancel to stop event creation at any time\n\n" \
+               "Use /cancel to stop event creation at any time\n" \
+               "Use /about to know more about this bot\n\n" \
                "The only available timezone yet is UTC+3 (Europe/Moscow)\n\n" \
                "Tip: include all extra data to your event description\n" \
                "(e. g. zoom link for a lecture)"
     await message.answer(response)
+
+
+@dp.message_handler(commands=["about"])
+async def start(message: types.Message):
+    response = "This is a bot designed to help in time management\n" \
+               "[Source code is available on github] (https://github.com/vikhrovvs/timeassistant)\n" \
+               "This is the alpha version of the bot. Please, contact @vikhrovvs with any ideas or feature requests"
+    await message.answer(response, parse_mode=ParseMode.MARKDOWN)
 
 
 class Event(StatesGroup):
